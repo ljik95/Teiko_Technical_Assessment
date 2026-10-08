@@ -1,10 +1,6 @@
 # Teiko Technical Assessment: Loblaw Bio Cell Counts
 
-Analysis of immune cell populations from Bob Loblaw's clinical trial: a SQLite
-database built from `cell-count.csv`, a small analysis pipeline, and a Streamlit
-dashboard.
-
-**Dashboard:** <DASHBOARD_URL>
+**Dashboard:** [<DASHBOARD_URL>](https://teikotechnicalassessment-jaythom.streamlit.app/)
 
 ## Running it (GitHub Codespaces)
 
@@ -33,38 +29,6 @@ analysis/
 dashboard/app.py      Streamlit dashboard (Parts 2-4)
 Makefile              setup / pipeline / dashboard targets
 ```
-
-## Database schema
-
-The CSV has one row per sample, and subject details repeat on every sample row.
-I split it into a few normalized tables so each fact is stored once:
-
-```
-projects    (project_id PK)
-subjects    (subject_id PK, project_id FK, condition, age, sex, treatment, response)
-samples     (sample_id PK, subject_id FK, sample_type, time_from_treatment_start)
-populations (population PK)
-cell_counts (sample_id FK, population FK, count)   PK (sample_id, population)
-```
-
-Why this layout:
-
-- **Subject attributes live on `subjects`.** Condition, sex, treatment and response
-  describe the patient, not the sample, so they are stored once per subject.
-  `load_data.py` checks that every row for a subject agrees on these fields.
-- **Cell counts are stored in long format** (one row per sample and population),
-  not as five columns. Adding a new population (say, a new marker panel) is just
-  new rows rather than a schema change. Totals and percentages become a simple
-  `GROUP BY` too.
-- **Indexes** cover the columns the analyses filter on (condition, treatment,
-  response, sample type, time point).
-
-To scale this to hundreds of projects and thousands of samples, you would mostly
-add tables around this core rather than change it: project metadata (sites,
-dates), assay or batch information on `samples`, and new `populations` as panels
-grow. Typical questions ("frequencies for subjects with condition X on treatment
-Y at time Z") stay a join from `subjects` to `samples` to `cell_counts`. Beyond a
-few million rows, the same schema moves to PostgreSQL without changes.
 
 ## Analysis
 
