@@ -1,21 +1,12 @@
-"""Part 3: responders vs non-responders among melanoma patients on miraclib (PBMC only).
-
-Each population is compared with a two-sided Mann-Whitney U test on the per-sample
-relative frequencies. The percentages aren't normally distributed and the groups are
-independent, so a rank-based test is a reasonable default. Because five populations
-are tested at once, p-values are also adjusted with Benjamini-Hochberg.
-
-Most subjects contribute three samples (day 0, 7 and 14), so samples aren't fully
-independent. As a sanity check the same test is repeated after averaging each
-subject's samples, which gives one value per subject.
-"""
+"""Part 3: responders vs non-responders among melanoma patients on miraclib (PBMC only)."""
 
 import pandas as pd
-from scipy.stats import false_discovery_control, mannwhitneyu
+from scipy.stats import mannwhitneyu
 
 from .db import DB_PATH, query
 
-ALPHA = 0.05
+# A difference is called significant when its p-value is below this cutoff.
+SIGNIFICANCE_LEVEL = 0.05
 
 COHORT_SQL = """
 WITH totals AS (
@@ -25,9 +16,7 @@ WITH totals AS (
 )
 SELECT
     s.sample_id                         AS sample,
-    sub.subject_id                      AS subject,
     sub.response,
-    s.time_from_treatment_start,
     c.population,
     100.0 * c.count / t.total_count     AS percentage
 FROM cell_counts c
@@ -48,65 +37,35 @@ def response_cohort(db_path=DB_PATH):
     return df
 
 
-def _mwu_pvalue(df):
-    responders = df.loc[df["response"] == "yes", "percentage"]
-    non_responders = df.loc[df["response"] == "no", "percentage"]
-    return mannwhitneyu(responders, non_responders, alternative="two-sided").pvalue
-
-
 def compare_responders(cohort):
-    """Return one row of test results per population."""
-    per_subject = (
-        cohort.groupby(["subject", "response", "population"], as_index=False)["percentage"]
-        .mean()
-    )
-
+    """Test each population for a difference between responders and non-responders."""
     rows = []
     for population, group in cohort.groupby("population"):
-        resp = group.loc[group["response"] == "yes", "percentage"]
-        non_resp = group.loc[group["response"] == "no", "percentage"]
-        subj = per_subject[per_subject["population"] == population]
+        responders = group.loc[group["response"] == "yes", "percentage"]
+        non_responders = group.loc[group["response"] == "no", "percentage"]
         rows.append({
             "population": population,
-            "n_responder_samples": len(resp),
-            "n_non_responder_samples": len(non_resp),
-            "responder_median_pct": resp.median(),
-            "non_responder_median_pct": non_resp.median(),
-            "median_difference": resp.median() - non_resp.median(),
-            "p_value": _mwu_pvalue(group),
-            "p_value_subject_level": _mwu_pvalue(subj),
+            "responder_median_pct": responders.median(),
+            "non_responder_median_pct": non_responders.median(),
+            "p_value": mannwhitneyu(responders, non_responders).pvalue,
         })
 
     results = pd.DataFrame(rows)
-    results["q_value_bh"] = false_discovery_control(results["p_value"], method="bh")
-    results["significant_raw"] = results["p_value"] < ALPHA
-    results["significant_bh"] = results["q_value_bh"] < ALPHA
+    results["significant"] = results["p_value"] < SIGNIFICANCE_LEVEL
     return results.sort_values("p_value").reset_index(drop=True)
 
 
 def describe_results(results):
-    """Plain-language summary of the test results."""
-    nominal = results[results["significant_raw"]]
-    adjusted = results[results["significant_bh"]]
-
-    if nominal.empty:
-        return (f"No population differs significantly between responders and "
-                f"non-responders (all p >= {ALPHA}).")
+    significant = results[results["significant"]]
+    if significant.empty:
+        return "No population differs significantly between responders and non-responders."
 
     lines = []
-    for row in nominal.itertuples():
-        direction = "higher" if row.median_difference > 0 else "lower"
+    for row in significant.itertuples():
+        direction = "higher" if row.responder_median_pct > row.non_responder_median_pct else "lower"
         lines.append(
-            f"{row.population}: {direction} in responders "
-            f"(median {row.responder_median_pct:.2f}% vs {row.non_responder_median_pct:.2f}%), "
-            f"p = {row.p_value:.4f}, BH q = {row.q_value_bh:.4f}, "
-            f"subject-level p = {row.p_value_subject_level:.4f}"
-        )
-
-    if adjusted.empty:
-        lines.append(
-            f"Note: none of these remain below {ALPHA} after Benjamini-Hochberg "
-            "correction for the five populations tested, so treat them as candidates "
-            "that need confirmation rather than firm findings."
+            f"{row.population} is significantly {direction} in responders "
+            f"(median {row.responder_median_pct:.2f}% vs {row.non_responder_median_pct:.2f}%, "
+            f"p = {row.p_value:.4f})."
         )
     return "\n".join(lines)

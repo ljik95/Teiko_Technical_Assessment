@@ -91,8 +91,8 @@ def statistics_tab():
     fig.update_layout(height=500, legend=dict(orientation="h", y=1.08))
     st.plotly_chart(fig, width="stretch")
 
-    st.markdown("**Mann-Whitney U test per population** (two-sided, Benjamini-Hochberg "
-                "adjusted across the five populations)")
+    st.markdown(f"**Significance test per population** (p < {stats.SIGNIFICANCE_LEVEL} "
+                "is significant)")
     st.dataframe(
         results,
         hide_index=True,
@@ -103,16 +103,6 @@ def statistics_tab():
         },
     )
     st.info(stats.describe_results(results))
-
-    with st.expander("Method notes"):
-        st.markdown(
-            "- Each sample's relative frequency is one observation; groups are compared "
-            "with a Mann-Whitney U test since the percentages aren't normally distributed.\n"
-            "- `q_value_bh` corrects for testing five populations at once.\n"
-            "- Most subjects have samples at day 0, 7 and 14, so samples aren't fully "
-            "independent. `p_value_subject_level` repeats the test after averaging each "
-            "subject's samples, as a check that the result isn't driven by repeated measures."
-        )
 
 
 def subset_tab():
