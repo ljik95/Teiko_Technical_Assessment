@@ -18,6 +18,15 @@ import load_data  # noqa: E402
 st.set_page_config(page_title="Loblaw Bio - Cell Counts", layout="wide")
 
 
+@st.cache_resource(show_spinner="Building the database from cell-count.csv...")
+def ensure_database():
+    # `make pipeline` normally creates the database. Building it here as well lets the
+    # app run on its own (e.g. on Streamlit Community Cloud). cache_resource runs this
+    # once per server, and other sessions wait for it to finish.
+    if not DB_PATH.exists():
+        load_data.main()
+
+
 @st.cache_data
 def load_frequencies():
     return summary.frequency_table()
@@ -138,11 +147,7 @@ def subset_tab():
 def main():
     st.title("Loblaw Bio: immune cell populations")
 
-    if not DB_PATH.exists():
-        # Normally `make pipeline` creates this. Building it here lets the app run
-        # on its own too (e.g. when deployed to Streamlit Community Cloud).
-        with st.spinner("Database not found, loading cell-count.csv..."):
-            load_data.main()
+    ensure_database()
 
     tab1, tab2, tab3 = st.tabs(
         ["Part 2: Data overview", "Part 3: Statistical analysis", "Part 4: Subset analysis"]

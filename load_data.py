@@ -108,11 +108,13 @@ def main():
     if not CSV_PATH.exists():
         raise SystemExit(f"Could not find {CSV_PATH}")
 
-    # Start from scratch each time so re-running the script is safe.
-    DB_PATH.unlink(missing_ok=True)
+    # Build into a temporary file and only move it into place once it's complete,
+    # so nothing ever reads a half-built database.
+    tmp_path = DB_PATH.with_name(DB_PATH.name + ".tmp")
+    tmp_path.unlink(missing_ok=True)
 
     rows = read_rows(CSV_PATH)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(tmp_path)
     try:
         conn.execute("PRAGMA foreign_keys = ON")
         with conn:
@@ -120,6 +122,7 @@ def main():
             n_subjects, n_samples, n_counts = load(rows, conn)
     finally:
         conn.close()
+    tmp_path.replace(DB_PATH)
 
     print(f"Created {DB_PATH.name}: {n_subjects} subjects, "
           f"{n_samples} samples, {n_counts} cell count rows")
